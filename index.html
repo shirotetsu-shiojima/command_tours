@@ -356,22 +356,18 @@ function buildDescription(arr) {
   const type = arr[0];
   const targetMap = { '0': '自分', '1': '相手', '2': '両方' };
   
-  // --- 共通部分の判定ルール更新 ---
+  // 共通の末尾文章
   const prob = arr[7];
   const condVal = arr[8];
   const turnVal = arr[11];
   
   let suffixStr = "";
-
   if (condVal === '1') {
-    // idx8 が 1 (永続) の場合: 「常に〇〇%の確率で発動。」
     suffixStr = `常に${prob}%の確率で発動。`;
   } else {
-    // それ以外 (0: メーター満タン時 など)
     const condMap = { '0': 'メーター満タン時', '2': 'HPに応じる条件' };
     const condText = condMap[condVal] || '';
     const turnText = (turnVal === '0') ? '永続的に' : `${turnVal}ターン分`;
-    
     suffixStr = `${condText}に${prob}%の確率で${turnText}発動。`;
   }
 
@@ -382,10 +378,19 @@ function buildDescription(arr) {
     const stat = statMap[arr[2]] || '';
     
     let mainEffect = "";
-    if (arr[3] === '4') {
+    if (arr[3] === '4') { // 相手参照
       const refStatMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量' };
-      const calcMap = { '0': '加算する', '1': '減算する', '2': '乗算する', '3': '除算する' };
-      mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を参照し、${target}の${stat}に${calcMap[arr[5]] || '計算する'}`;
+      const refStat = refStatMap[arr[4]] || '相手のステータス';
+      const val = arr[6]; // 値レベル
+      const calcMethod = arr[5]; // 計算方法 (0:加算, 1:減算, 2:乗算, 3:除算)
+
+      let formulaStr = "";
+      if (calcMethod === '0') formulaStr = `相手の${refStat} + ${val}`;
+      else if (calcMethod === '1') formulaStr = `相手の${refStat} - ${val}`;
+      else if (calcMethod === '2') formulaStr = `相手の${refStat} × ${val}`;
+      else if (calcMethod === '3') formulaStr = `相手の${refStat} ÷ ${val}`;
+
+      mainEffect = `${target}の${stat}を (${formulaStr}) にする`;
     } else {
       const calcMap = { '0': `を ${arr[6]} 加算する`, '1': `を ${arr[6]} 減算する`, '2': `を ${arr[6]} 倍にする`, '3': `を ${arr[6]} で割る` };
       mainEffect = `${target}の${stat}${calcMap[arr[3]] || ''}`;
@@ -402,10 +407,19 @@ function buildDescription(arr) {
       mainEffect = `${target}に ${arr[6]}（固定値）のダメージを与える`;
     } else if (arr[3] === '1') {
       mainEffect = `${target}に（パワーステータス × ${arr[6]}）のダメージを与える`;
-    } else if (arr[3] === '2') {
+    } else if (arr[3] === '2') { // 相手参照
       const refStatMap = { '0': '最大体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量', '7': '実行時の体力' };
-      const calcMap = { '0': '加算した', '1': '減算した', '2': '乗算した', '3': '除算した' };
-      mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を${calcMap[arr[5]] || ''}数値のダメージを${target}に与える`;
+      const refStat = refStatMap[arr[4]] || '相手のステータス';
+      const val = arr[6];
+      const calcMethod = arr[5];
+
+      let formulaStr = "";
+      if (calcMethod === '0') formulaStr = `相手の${refStat} + ${val}`;
+      else if (calcMethod === '1') formulaStr = `相手の${refStat} - ${val}`;
+      else if (calcMethod === '2') formulaStr = `相手の${refStat} × ${val}`;
+      else if (calcMethod === '3') formulaStr = `相手の${refStat} ÷ ${val}`;
+
+      mainEffect = `(${formulaStr}) のダメージを${target}に与える`;
     }
 
     return `${mainEffect}。${suffixStr}`;
@@ -419,10 +433,19 @@ function buildDescription(arr) {
     const isPercentTarget = ['0', '1', '2', '3'].includes(sysIndex);
     
     let mainEffect = "";
-    if (arr[3] === '4') {
+    if (arr[3] === '4') { // 相手参照
       const refStatMap = { '0': '最大体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量', '7': '実行時の体力' };
-      const calcMap = { '0': '加算する', '1': '減算する', '2': '乗算する', '3': '除算する' };
-      mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を参照し、${target}の${sysName}に${calcMap[arr[5]] || '計算する'}`;
+      const refStat = refStatMap[arr[4]] || '相手のステータス';
+      const val = arr[6];
+      const calcMethod = arr[5];
+
+      let formulaStr = "";
+      if (calcMethod === '0') formulaStr = `相手の${refStat} + ${val}`;
+      else if (calcMethod === '1') formulaStr = `相手の${refStat} - ${val}`;
+      else if (calcMethod === '2') formulaStr = `相手の${refStat} × ${val}`;
+      else if (calcMethod === '3') formulaStr = `相手の${refStat} ÷ ${val}`;
+
+      mainEffect = `${target}の${sysName}を (${formulaStr}) にする`;
     } else {
       if (isPercentTarget && arr[3] === '0') {
         mainEffect = `${target}の${sysName}を ${arr[6]}%にする`;
@@ -438,7 +461,6 @@ function buildDescription(arr) {
   } 
   
   else if (type === '4') { // 条件分岐
-    // 条件分岐は変更なし
     const target = targetMap[arr[1]] || '';
     const menu = arr[2];
 
