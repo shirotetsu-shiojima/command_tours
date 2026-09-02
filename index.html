@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>戦闘ゲーム用 特殊能力コマンド生成ツール</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 0 20px;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      font-size: 1.5em;
+      border-bottom: 2px solid #333;
+      padding-bottom: 8px;
+    }
+    .form-group {
+      background: #fff;
+      padding: 15px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 15px;
+    }
+    .field {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .field label {
+      width: 220px;
+      font-weight: bold;
+      font-size: 0.9em;
+    }
+    .field select, .field input[type="number"], .field input[type="text"] {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      max-width: 300px;
+    }
+    .warning {
+      color: #d9534f;
+      font-size: 0.85em;
+      margin-left: 10px;
+      font-weight: bold;
+    }
+    .btn-container {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 1em;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background-color: #0056b3; }
+    button.btn-copy { background-color: #28a745; }
+    button.btn-copy:hover { background-color: #218838; }
+    .result-box {
+      background: #e9ecef;
+      padding: 15px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 1.1em;
+      word-break: break-all;
+      margin-bottom: 10px;
+    }
+    .description-box {
+      background: #e7f3fe;
+      border-left: 6px solid #2196F3;
+      padding: 15px;
+      border-radius: 4px;
+      font-size: 1.05em;
+      line-height: 1.5;
+    }
+    .copied-msg {
+      color: #28a745;
+      font-size: 0.85em;
+      margin-left: 10px;
+      display: none;
+      align-self: center;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>特殊能力コマンド生成＆説明ツール</h1>
+
+  <div class="form-group">
+    <div class="field">
+      <label for="type">種別:</label>
+      <select id="type" onchange="renderForm()">
+        <option value="1">1:能力調整</option>
+        <option value="2">2:攻撃</option>
+        <option value="3">3:システム介入</option>
+        <option value="4">4:条件分岐</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="form-group" id="form-fields"></div>
+
+  <div class="btn-container">
+    <button onclick="generateAll()">コマンド生成</button>
+    <button class="btn-copy" onclick="copyToClipboard()">コピー</button>
+    <span id="copy-msg" class="copied-msg">コピーしました！</span>
+  </div>
+
+  <div class="result-box">
+    <strong>生成結果:</strong><br>
+    <span id="output">[ ]</span>
+  </div>
+
+  <div class="description-box">
+    <strong>能力説明文:</strong><br>
+    <span id="description">-</span>
+  </div>
+
+  <script>
+    const specData = {
+      1: {
+        idx1: { name: "対象", options: ["0:自分", "1:相手", "2:両方"] },
+        idx2: { name: "対象ステータス", options: ["0:体力", "1:パワー", "2:ガード", "3:コミュ力", "4:学力", "5:IQ", "6:全ステータス"] },
+        idx3: { name: "効果", options: ["0:加算", "1:減算", "2:乗算", "3:除算", "4:相手参照"] },
+        idx4: { name: "参照ステータス", options: ["0:体力", "1:パワー", "2:ガード", "3:コミュ力", "4:学力", "5:IQ", "6:前ターンのダメージ量"], dependsOn: { idx: 3, val: ["4"] } },
+        idx5: { name: "計算方法", options: ["0:加算", "1:減算", "2:乗算", "3:除算"], dependsOn: { idx: 3, val: ["4"] } },
+        idx6: { name: "値レベル", type: "number" },
+        idx7: { name: "発動確率(0~100)", type: "number", min: 0, max: 100 },
+        idx8: { name: "発動条件", options: ["0:メーター満タン時", "1:永続", "2:HPに応じる"], unimpl: ["2"] },
+        idx9: { name: "HP取得対象", options: ["0:自分", "1:相手"], unimpl: ["0", "1"], dependsOn: { idx: 8, val: ["2"] } },
+        idx10: { name: "HP残率指定", type: "number", min: 0, max: 100, unimpl: true, dependsOn: { idx: 8, val: ["2"] } },
+        idx11: { name: "継続ターン数", type: "custom_turn" }
+      },
+      2: {
+        idx1: { name: "対象", options: ["0:自分(自滅)", "1:相手(攻撃)", "2:両方"] },
+        idx2: { name: "対象ステータス", options: ["0:体力"] },
+        idx3: { name: "効果", options: ["0:加算(固定値)", "1:乗算(パワー依存)", "2:相手参照"] },
+        idx4: { name: "参照ステータス", options: ["0:最大体力", "1:パワー", "2:ガード", "3:コミュ力", "4:学力", "5:IQ", "6:前ターンのダメージ量", "7:実行時の体力"], dependsOn: { idx: 3, val: ["2"] } },
+        idx5: { name: "計算方法", options: ["0:加算", "1:減算", "2:乗算", "3:除算"], dependsOn: { idx: 3, val: ["2"] } },
+        idx6: { name: "値レベル", type: "number" },
+        idx7: { name: "発動確率(0~100)", type: "number", min: 0, max: 100 },
+        idx8: { name: "発動条件", options: ["0:メーター満タン時", "1:永続", "2:HPに応じる"], unimpl: ["2"] },
+        idx9: { name: "HP取得対象", options: ["0:自分", "1:相手"], unimpl: ["0", "1"], dependsOn: { idx: 8, val: ["2"] } },
+        idx10: { name: "HP残率指定", type: "number", min: 0, max: 100, unimpl: true, dependsOn: { idx: 8, val: ["2"] } },
+        idx11: { name: "継続ターン数", type: "custom_turn" }
+      },
+      3: {
+        idx1: { name: "対象", options: ["0:自分", "1:相手", "2:両方"] },
+        idx2: { name: "活用するシステム", options: ["0:防御力", "1:クリティカル率", "2:ミス率", "3:クリティカル倍率", "4:実行時の体力"] },
+        idx3: { name: "効果", options: ["0:加算(固定値)", "1:減算", "2:乗算", "3:除算", "4:相手参照"] },
+        idx4: { name: "参照ステータス", options: ["0:最大体力", "1:パワー", "2:ガード", "3:コミュ力", "4:学力", "5:IQ", "6:前ターンのダメージ量", "7:実行時の体力"], dependsOn: { idx: 3, val: ["4"] } },
+        idx5: { name: "計算方法", options: ["0:加算", "1:減算", "2:乗算", "3:除算"], dependsOn: { idx: 3, val: ["4"] } },
+        idx6: { name: "値レベル", type: "number" },
+        idx7: { name: "発動確率(0~100)", type: "number", min: 0, max: 100 },
+        idx8: { name: "発動条件", options: ["0:メーター満タン時", "1:永続", "2:HPに応じる"], unimpl: ["2"] },
+        idx9: { name: "HP取得対象", options: ["0:自分", "1:相手"], unimpl: ["0", "1"], dependsOn: { idx: 8, val: ["2"] } },
+        idx10: { name: "HP残率指定", type: "number", min: 0, max: 100, unimpl: true, dependsOn: { idx: 8, val: ["2"] } },
+        idx11: { name: "継続ターン数", type: "custom_turn" }
+      },
+      4: {
+        idx1: { name: "対象", options: ["0:自分", "1:相手"] },
+        idx2: { name: "メニュー", options: ["0:ステータス参照", "1:場所", "2:相手のID"] },
+        idx3: { name: "対象ステータス", options: ["0:体力", "1:パワー", "2:ガード", "3:コミュ力", "4:学力", "5:IQ", "6:合計"], dependsOn: { idx: 2, val: ["0"] } },
+        idx4: { name: "条件設定数値", options: ["0:自分の数値", "1以上:カスタム数値"], dependsOn: { idx: 2, val: ["0"] } },
+        idx5: { name: "条件", options: ["0:以上", "1:以下", "2:超過", "3:未満", "4:等しい"], dependsOn: { idx: 2, val: ["0"] } },
+        idx6: { name: "リスト", type: "list_text", dependsOn: { idx: 2, val: ["1", "2"] } },
+        idx7: { name: "条件", options: ["0:リストに含まれる", "1:リストに含まれない"], dependsOn: { idx: 2, val: ["1", "2"] } },
+        idx8: { name: "発動フラグ", options: ["0:trueの場合のみそれ以下を発動"] },
+        idx9: { name: "未使用(0埋め)", type: "fixed_zero" },
+        idx10: { name: "未使用(0埋め)", type: "fixed_zero" },
+        idx11: { name: "未使用(0埋め)", type: "fixed_zero" }
+      }
+    };
+
+    function renderForm() {
+      const type = document.getElementById('type').value;
+      const container = document.getElementById('form-fields');
+      container.innerHTML = '';
+
+      const currentSpec = specData[type];
+
+      for (let i = 1; i <= 11; i++) {
+        const item = currentSpec[`idx${i}`];
+        if (!item) continue;
+
+        const fieldDiv = document.createElement('div');
+        fieldDiv.className = 'field';
+        fieldDiv.id = `field-idx${i}`;
+
+        const label = document.createElement('label');
+        label.textContent = `idx${i} (${item.name}):`;
+        fieldDiv.appendChild(label);
+
+        if (item.options) {
+          const select = document.createElement('select');
+          select.id = `input-idx${i}`;
+          select.onchange = () => { handleInputChange(type); generateAll(); };
+
+          item.options.forEach(opt => {
+            const el = document.createElement('option');
+            const val = opt.split(':')[0];
+            el.value = val;
+            el.textContent = opt;
+            select.appendChild(el);
+          });
+
+          fieldDiv.appendChild(select);
+        } else if (item.type === 'number') {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.id = `input-idx${i}`;
+          input.value = (i === 7) ? 100 : 0;
+          if (item.min !== undefined) input.min = item.min;
+          if (item.max !== undefined) input.max = item.max;
+          input.oninput = () => generateAll();
+          fieldDiv.appendChild(input);
+        } else if (item.type === 'list_text') {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.id = `input-idx${i}`;
+          input.placeholder = "例: 1,2,3";
+          input.oninput = () => generateAll();
+          fieldDiv.appendChild(input);
+        } else if (item.type === 'custom_turn') {
+          const select = document.createElement('select');
+          select.id = `input-idx${i}`;
+          select.add(new Option('0:永続', '0'));
+          select.add(new Option('1以上:カスタム数値', 'custom'));
+          select.onchange = function() {
+            const numInput = document.getElementById(`input-idx${i}-custom`);
+            numInput.style.display = (this.value === 'custom') ? 'inline-block' : 'none';
+            generateAll();
+          };
+          fieldDiv.appendChild(select);
+
+          const numInput = document.createElement('input');
+          numInput.type = 'number';
+          numInput.id = `input-idx${i}-custom`;
+          numInput.value = 1;
+          numInput.min = 1;
+          numInput.style.display = 'none';
+          numInput.style.width = '80px';
+          numInput.style.marginLeft = '10px';
+          numInput.oninput = () => generateAll();
+          fieldDiv.appendChild(numInput);
+        } else if (item.type === 'fixed_zero') {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.id = `input-idx${i}`;
+          input.value = '0';
+          input.disabled = true;
+          fieldDiv.appendChild(input);
+        }
+
+        const warnSpan = document.createElement('span');
+        warnSpan.id = `warn-idx${i}`;
+        warnSpan.className = 'warning';
+        warnSpan.style.display = 'none';
+        fieldDiv.appendChild(warnSpan);
+
+        container.appendChild(fieldDiv);
+      }
+
+      handleInputChange(type);
+      generateAll();
+    }
+
+    function handleInputChange(type) {
+      const currentSpec = specData[type];
+
+      for (let i = 1; i <= 11; i++) {
+        const item = currentSpec[`idx${i}`];
+        const fieldDiv = document.getElementById(`field-idx${i}`);
+        if (!item || !fieldDiv) continue;
+
+        if (item.dependsOn) {
+          const targetElem = document.getElementById(`input-idx${item.dependsOn.idx}`);
+          if (targetElem && item.dependsOn.val.includes(targetElem.value)) {
+            fieldDiv.style.display = 'flex';
+          } else {
+            fieldDiv.style.display = 'none';
+          }
+        } else {
+          fieldDiv.style.display = 'flex';
+        }
+
+        const warnSpan = document.getElementById(`warn-idx${i}`);
+        if (warnSpan) {
+          let isUnimplemented = false;
+          if (item.unimpl === true) {
+            isUnimplemented = true;
+          } else if (Array.isArray(item.unimpl)) {
+            const valElem = document.getElementById(`input-idx${i}`);
+            if (valElem && item.unimpl.includes(valElem.value)) {
+              isUnimplemented = true;
+            }
+          }
+
+          if (isUnimplemented && fieldDiv.style.display !== 'none') {
+            warnSpan.textContent = "※未実装機能のため動作しない可能性があります";
+            warnSpan.style.display = 'inline';
+          } else {
+            warnSpan.style.display = 'none';
+          }
+        }
+      }
+    }
+
+    function getCommandArray() {
+      const type = document.getElementById('type').value;
+      const resultArray = [type];
+
+      for (let i = 1; i <= 11; i++) {
+        const item = specData[type][`idx${i}`];
+        let val = "0";
+
+        if (item.type === 'list_text') {
+          const elem = document.getElementById(`input-idx${i}`);
+          const raw = elem ? elem.value.trim() : '';
+          val = raw ? `(${raw})` : '()';
+        } else if (item.type === 'custom_turn') {
+          const sel = document.getElementById(`input-idx${i}`).value;
+          if (sel === 'custom') {
+            val = document.getElementById(`input-idx${i}-custom`).value || '1';
+          } else {
+            val = sel;
+          }
+        } else {
+          const elem = document.getElementById(`input-idx${i}`);
+          if (elem) {
+            val = elem.value;
+          }
+        }
+        resultArray.push(val);
+      }
+      return resultArray;
+    }
+
+    function generateAll() {
+      const arr = getCommandArray();
+      document.getElementById('output').textContent = `[${arr.join(' ')}]`;
+      document.getElementById('description').textContent = buildDescription(arr);
+    }
+
+    // --- 説明文組み立てロジック ---
+    function buildDescription(arr) {
+      const type = arr[0];
+      const targetMap = { '0': '自分', '1': '相手', '2': '両方' };
+      const condMap = { '0': 'メーター満タン時', '1': '永続', '2': 'HPに応じる条件' };
+      
+      const probStr = `${arr[7]}%の確率で`;
+      const turnStr = (arr[11] === '0') ? '永続的' : `${arr[11]}ターン分`;
+
+      if (type === '1') { // 能力調整
+        const target = targetMap[arr[1]] || '';
+        const statMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '全ステータス' };
+        const stat = statMap[arr[2]] || '';
+        
+        let mainEffect = "";
+        if (arr[3] === '4') { // 相手参照
+          const refStatMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量' };
+          const calcMap = { '0': '加算する', '1': '減算する', '2': '乗算する', '3': '除算する' };
+          mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を参照し、${target}の${stat}に${calcMap[arr[5]] || '計算する'}`;
+        } else {
+          const calcMap = { '0': `を ${arr[6]} 加算する`, '1': `を ${arr[6]} 減算する`, '2': `を ${arr[6]} 倍にする`, '3': `を ${arr[6]} で割る` };
+          mainEffect = `${target}の${stat}${calcMap[arr[3]] || ''}`;
+        }
+
+        return `${mainEffect}。${condMap[arr[8]] || ''}に${probStr}${turnStr}発動。`;
+      } 
+      
+      else if (type === '2') { // 攻撃
+        const target = (arr[1] === '0') ? '自分' : '相手';
+        let mainEffect = "";
+        
+        if (arr[3] === '0') {
+          mainEffect = `${target}に ${arr[6]}（固定値）のダメージを与える`;
+        } else if (arr[3] === '1') {
+          mainEffect = `${target}に（パワーステータス × ${arr[6]}）のダメージを与える`;
+        } else if (arr[3] === '2') {
+          const refStatMap = { '0': '最大体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量', '7': '実行時の体力' };
+          const calcMap = { '0': '加算した', '1': '減算した', '2': '乗算した', '3': '除算した' };
+          mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を${calcMap[arr[5]] || ''}数値のダメージを${target}に与える`;
+        }
+
+        return `${mainEffect}。${condMap[arr[8]] || ''}に${probStr}${turnStr}発動。`;
+      } 
+      
+      else if (type === '3') { // システム介入
+  const target = targetMap[arr[1]] || '';
+  const sysMap = { '0': '防御力', '1': 'クリティカル率', '2': 'ミス率', '3': 'クリティカル倍率', '4': '実行時の体力' };
+  const sysIndex = arr[2];
+  const sysName = sysMap[sysIndex] || '';
+  
+  // 防御力(0)、クリティカル率(1)、ミス率(2)、クリティカル倍率(3) の判定
+  const isPercentTarget = ['0', '1', '2', '3'].includes(sysIndex);
+  
+  let mainEffect = "";
+  if (arr[3] === '4') { // 相手参照の場合
+    const refStatMap = { '0': '最大体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量', '7': '実行時の体力' };
+    const calcMap = { '0': '加算する', '1': '減算する', '2': '乗算する', '3': '除算する' };
+    mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を参照し、${target}の${sysName}に${calcMap[arr[5]] || '計算する'}`;
+  } else {
+    if (isPercentTarget && arr[3] === '0') {
+      // 対象項目 かつ 加算(0) の場合は 「〇〇%にする」 表記にする
+      mainEffect = `${target}の${sysName}を ${arr[6]}%にする`;
+    } else if (isPercentTarget && arr[3] === '1') {
+      // 対象項目 かつ 減算(1) の場合
+      mainEffect = `${target}の${sysName}を ${arr[6]}%減少させる`;
+    } else {
+      // その他の計算（乗算・除算、または実行時の体力など）
+      const calcMap = { 
+        '0': `に ${arr[6]} 加算する`, 
+        '1': `から ${arr[6]} 減算する`, 
+        '2': `を ${arr[6]} 倍にする`, 
+        '3': `を ${arr[6]} で割る` 
+      };
+      mainEffect = `${target}の${sysName}${calcMap[arr[3]] || ''}`;
+    }
+  }
+
+  return `${mainEffect}。${condMap[arr[8]] || ''}に${probStr}${turnStr}発動。`;
+}
+      
+      else if (type === '4') { // 条件分岐
+        const target = targetMap[arr[1]] || '';
+        const menu = arr[2];
+
+        if (menu === '0') {
+          const statMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '全ステータス合計' };
+          const condCompMap = { '0': '以上', '1': '以下', '2': '超過', '3': '未満', '4': '等しい' };
+          const valText = (arr[4] === '0') ? '自分の数値' : `カスタム数値(${arr[6]})`;
+          return `【条件判定】${target}の${statMap[arr[3]] || ''}が${valText} ${condCompMap[arr[5]] || ''} の場合、以降のコマンドを実行する。`;
+        } else if (menu === '1') {
+          const inMap = { '0': '含まれる', '1': '含まれない' };
+          return `【条件判定】現在の場所が リスト${arr[6]} に${inMap[arr[7]] || ''}場合、以降のコマンドを実行する。`;
+        } else if (menu === '2') {
+          const inMap = { '0': '含まれる', '1': '含まれない' };
+          return `【条件判定】相手のIDが リスト${arr[6]} に${inMap[arr[7]] || ''}場合、以降のコマンドを実行する。`;
+        }
+      }
+
+      return "説明文を生成できませんでした。";
+    }
+
+    function copyToClipboard() {
+      const outputText = document.getElementById('output').textContent;
+      navigator.clipboard.writeText(outputText).then(() => {
+        const msg = document.getElementById('copy-msg');
+        msg.style.display = 'inline';
+        setTimeout(() => {
+          msg.style.display = 'none';
+        }, 2000);
+      });
+    }
+
+    // 初期表示実行
+    renderForm();
+  </script>
+</body>
+</html>
