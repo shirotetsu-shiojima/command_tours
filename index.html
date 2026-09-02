@@ -351,105 +351,113 @@
     }
 
     // --- 説明文組み立てロジック ---
-    function buildDescription(arr) {
-      const type = arr[0];
-      const targetMap = { '0': '自分', '1': '相手', '2': '両方' };
-      const condMap = { '0': 'メーター満タン時', '1': '永続', '2': 'HPに応じる条件' };
-      
-      const probStr = `${arr[7]}%の確率で`;
-      const turnStr = (arr[11] === '0') ? '永続的' : `${arr[11]}ターン分`;
-
-      if (type === '1') { // 能力調整
-        const target = targetMap[arr[1]] || '';
-        const statMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '全ステータス' };
-        const stat = statMap[arr[2]] || '';
-        
-        let mainEffect = "";
-        if (arr[3] === '4') { // 相手参照
-          const refStatMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量' };
-          const calcMap = { '0': '加算する', '1': '減算する', '2': '乗算する', '3': '除算する' };
-          mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を参照し、${target}の${stat}に${calcMap[arr[5]] || '計算する'}`;
-        } else {
-          const calcMap = { '0': `を ${arr[6]} 加算する`, '1': `を ${arr[6]} 減算する`, '2': `を ${arr[6]} 倍にする`, '3': `を ${arr[6]} で割る` };
-          mainEffect = `${target}の${stat}${calcMap[arr[3]] || ''}`;
-        }
-
-        return `${mainEffect}。${condMap[arr[8]] || ''}に${probStr}${turnStr}発動。`;
-      } 
-      
-      else if (type === '2') { // 攻撃
-        const target = (arr[1] === '0') ? '自分' : '相手';
-        let mainEffect = "";
-        
-        if (arr[3] === '0') {
-          mainEffect = `${target}に ${arr[6]}（固定値）のダメージを与える`;
-        } else if (arr[3] === '1') {
-          mainEffect = `${target}に（パワーステータス × ${arr[6]}）のダメージを与える`;
-        } else if (arr[3] === '2') {
-          const refStatMap = { '0': '最大体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量', '7': '実行時の体力' };
-          const calcMap = { '0': '加算した', '1': '減算した', '2': '乗算した', '3': '除算した' };
-          mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を${calcMap[arr[5]] || ''}数値のダメージを${target}に与える`;
-        }
-
-        return `${mainEffect}。${condMap[arr[8]] || ''}に${probStr}${turnStr}発動。`;
-      } 
-      
-      else if (type === '3') { // システム介入
-  const target = targetMap[arr[1]] || '';
-  const sysMap = { '0': '防御力', '1': 'クリティカル率', '2': 'ミス率', '3': 'クリティカル倍率', '4': '実行時の体力' };
-  const sysIndex = arr[2];
-  const sysName = sysMap[sysIndex] || '';
+    // --- 説明文組み立てロジック ---
+function buildDescription(arr) {
+  const type = arr[0];
+  const targetMap = { '0': '自分', '1': '相手', '2': '両方' };
   
-  // 防御力(0)、クリティカル率(1)、ミス率(2)、クリティカル倍率(3) の判定
-  const isPercentTarget = ['0', '1', '2', '3'].includes(sysIndex);
+  // --- 共通部分の判定ルール更新 ---
+  const prob = arr[7];
+  const condVal = arr[8];
+  const turnVal = arr[11];
   
-  let mainEffect = "";
-  if (arr[3] === '4') { // 相手参照の場合
-    const refStatMap = { '0': '最大体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量', '7': '実行時の体力' };
-    const calcMap = { '0': '加算する', '1': '減算する', '2': '乗算する', '3': '除算する' };
-    mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を参照し、${target}の${sysName}に${calcMap[arr[5]] || '計算する'}`;
+  let suffixStr = "";
+
+  if (condVal === '1') {
+    // idx8 が 1 (永続) の場合: 「常に〇〇%の確率で発動。」
+    suffixStr = `常に${prob}%の確率で発動。`;
   } else {
-    if (isPercentTarget && arr[3] === '0') {
-      // 対象項目 かつ 加算(0) の場合は 「〇〇%にする」 表記にする
-      mainEffect = `${target}の${sysName}を ${arr[6]}%にする`;
-    } else if (isPercentTarget && arr[3] === '1') {
-      // 対象項目 かつ 減算(1) の場合
-      mainEffect = `${target}の${sysName}を ${arr[6]}%減少させる`;
+    // それ以外 (0: メーター満タン時 など)
+    const condMap = { '0': 'メーター満タン時', '2': 'HPに応じる条件' };
+    const condText = condMap[condVal] || '';
+    const turnText = (turnVal === '0') ? '永続的に' : `${turnVal}ターン分`;
+    
+    suffixStr = `${condText}に${prob}%の確率で${turnText}発動。`;
+  }
+
+  // --- 種別ごとの主文作成 ---
+  if (type === '1') { // 能力調整
+    const target = targetMap[arr[1]] || '';
+    const statMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '全ステータス' };
+    const stat = statMap[arr[2]] || '';
+    
+    let mainEffect = "";
+    if (arr[3] === '4') {
+      const refStatMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量' };
+      const calcMap = { '0': '加算する', '1': '減算する', '2': '乗算する', '3': '除算する' };
+      mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を参照し、${target}の${stat}に${calcMap[arr[5]] || '計算する'}`;
     } else {
-      // その他の計算（乗算・除算、または実行時の体力など）
-      const calcMap = { 
-        '0': `に ${arr[6]} 加算する`, 
-        '1': `から ${arr[6]} 減算する`, 
-        '2': `を ${arr[6]} 倍にする`, 
-        '3': `を ${arr[6]} で割る` 
-      };
-      mainEffect = `${target}の${sysName}${calcMap[arr[3]] || ''}`;
+      const calcMap = { '0': `を ${arr[6]} 加算する`, '1': `を ${arr[6]} 減算する`, '2': `を ${arr[6]} 倍にする`, '3': `を ${arr[6]} で割る` };
+      mainEffect = `${target}の${stat}${calcMap[arr[3]] || ''}`;
+    }
+
+    return `${mainEffect}。${suffixStr}`;
+  } 
+  
+  else if (type === '2') { // 攻撃
+    const target = (arr[1] === '0') ? '自分' : '相手';
+    let mainEffect = "";
+    
+    if (arr[3] === '0') {
+      mainEffect = `${target}に ${arr[6]}（固定値）のダメージを与える`;
+    } else if (arr[3] === '1') {
+      mainEffect = `${target}に（パワーステータス × ${arr[6]}）のダメージを与える`;
+    } else if (arr[3] === '2') {
+      const refStatMap = { '0': '最大体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量', '7': '実行時の体力' };
+      const calcMap = { '0': '加算した', '1': '減算した', '2': '乗算した', '3': '除算した' };
+      mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を${calcMap[arr[5]] || ''}数値のダメージを${target}に与える`;
+    }
+
+    return `${mainEffect}。${suffixStr}`;
+  } 
+  
+  else if (type === '3') { // システム介入
+    const target = targetMap[arr[1]] || '';
+    const sysMap = { '0': '防御力', '1': 'クリティカル率', '2': 'ミス率', '3': 'クリティカル倍率', '4': '実行時の体力' };
+    const sysIndex = arr[2];
+    const sysName = sysMap[sysIndex] || '';
+    const isPercentTarget = ['0', '1', '2', '3'].includes(sysIndex);
+    
+    let mainEffect = "";
+    if (arr[3] === '4') {
+      const refStatMap = { '0': '最大体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '前ターンのダメージ量', '7': '実行時の体力' };
+      const calcMap = { '0': '加算する', '1': '減算する', '2': '乗算する', '3': '除算する' };
+      mainEffect = `相手の${refStatMap[arr[4]] || 'ステータス'}を参照し、${target}の${sysName}に${calcMap[arr[5]] || '計算する'}`;
+    } else {
+      if (isPercentTarget && arr[3] === '0') {
+        mainEffect = `${target}の${sysName}を ${arr[6]}%にする`;
+      } else if (isPercentTarget && arr[3] === '1') {
+        mainEffect = `${target}の${sysName}を ${arr[6]}%減少させる`;
+      } else {
+        const calcMap = { '0': `に ${arr[6]} 加算する`, '1': `から ${arr[6]} 減算する`, '2': `を ${arr[6]} 倍にする`, '3': `を ${arr[6]} で割る` };
+        mainEffect = `${target}の${sysName}${calcMap[arr[3]] || ''}`;
+      }
+    }
+
+    return `${mainEffect}。${suffixStr}`;
+  } 
+  
+  else if (type === '4') { // 条件分岐
+    // 条件分岐は変更なし
+    const target = targetMap[arr[1]] || '';
+    const menu = arr[2];
+
+    if (menu === '0') {
+      const statMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '全ステータス合計' };
+      const condCompMap = { '0': '以上', '1': '以下', '2': '超過', '3': '未満', '4': '等しい' };
+      const valText = (arr[4] === '0') ? '自分の数値' : `カスタム数値(${arr[6]})`;
+      return `【条件判定】${target}の${statMap[arr[3]] || ''}が${valText} ${condCompMap[arr[5]] || ''} の場合、以降のコマンドを実行する。`;
+    } else if (menu === '1') {
+      const inMap = { '0': '含まれる', '1': '含まれない' };
+      return `【条件判定】現在の場所が リスト${arr[6]} に${inMap[arr[7]] || ''}場合、以降のコマンドを実行する。`;
+    } else if (menu === '2') {
+      const inMap = { '0': '含まれる', '1': '含まれない' };
+      return `【条件判定】相手のIDが リスト${arr[6]} に${inMap[arr[7]] || ''}場合、以降のコマンドを実行する。`;
     }
   }
 
-  return `${mainEffect}。${condMap[arr[8]] || ''}に${probStr}${turnStr}発動。`;
+  return "説明文を生成できませんでした。";
 }
-      
-      else if (type === '4') { // 条件分岐
-        const target = targetMap[arr[1]] || '';
-        const menu = arr[2];
-
-        if (menu === '0') {
-          const statMap = { '0': '体力', '1': 'パワー', '2': 'ガード', '3': 'コミュ力', '4': '学力', '5': 'IQ', '6': '全ステータス合計' };
-          const condCompMap = { '0': '以上', '1': '以下', '2': '超過', '3': '未満', '4': '等しい' };
-          const valText = (arr[4] === '0') ? '自分の数値' : `カスタム数値(${arr[6]})`;
-          return `【条件判定】${target}の${statMap[arr[3]] || ''}が${valText} ${condCompMap[arr[5]] || ''} の場合、以降のコマンドを実行する。`;
-        } else if (menu === '1') {
-          const inMap = { '0': '含まれる', '1': '含まれない' };
-          return `【条件判定】現在の場所が リスト${arr[6]} に${inMap[arr[7]] || ''}場合、以降のコマンドを実行する。`;
-        } else if (menu === '2') {
-          const inMap = { '0': '含まれる', '1': '含まれない' };
-          return `【条件判定】相手のIDが リスト${arr[6]} に${inMap[arr[7]] || ''}場合、以降のコマンドを実行する。`;
-        }
-      }
-
-      return "説明文を生成できませんでした。";
-    }
 
     function copyToClipboard() {
       const outputText = document.getElementById('output').textContent;
